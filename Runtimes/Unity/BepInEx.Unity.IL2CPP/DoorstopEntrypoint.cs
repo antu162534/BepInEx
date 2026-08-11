@@ -1,7 +1,5 @@
 using System;
-using System.Diagnostics;
 using System.IO;
-using System.Threading;
 using BepInEx;
 using BepInEx.Preloader.Core;
 using BepInEx.Unity.IL2CPP;
@@ -21,7 +19,10 @@ internal static class Entrypoint
         // We set it to the current directory first as a fallback, but try to use the same location as the .exe file.
         var silentExceptionLog = Environment.GetEnvironmentVariable("BEPINEX_PRELOADER_LOG") ??
                                  $"preloader_{DateTime.Now:yyyyMMdd_HHmmss_fff}.log";
-        Mutex mutex = null;
+
+        // Android CoreCLR 会把命名 Mutex 的共享文件创建在 /data/local/tmp，普通应用 UID 没有写入权限，
+        // 执行 new Mutex(...) 会因 EACCES 导致 BepInEx 启动失败，因此保留原代码并注释掉。
+        // Mutex mutex = null;
 
         try
         {
@@ -30,11 +31,11 @@ internal static class Entrypoint
             silentExceptionLog =
                 Path.Combine(Path.GetDirectoryName(EnvVars.DOORSTOP_PROCESS_PATH), silentExceptionLog);
 
-            var mutexId = Utility.HashStrings(Process.GetCurrentProcess().ProcessName, EnvVars.DOORSTOP_PROCESS_PATH,
-                                              typeof(Entrypoint).FullName);
-
-            mutex = new Mutex(false, $"Global\\{mutexId}");
-            mutex.WaitOne();
+            // var mutexId = Utility.HashStrings(Process.GetCurrentProcess().ProcessName, EnvVars.DOORSTOP_PROCESS_PATH,
+            //                                   typeof(Entrypoint).FullName);
+            //
+            // mutex = new Mutex(false, $"Global\\{mutexId}");
+            // mutex.WaitOne();
 
             UnityPreloaderRunner.PreloaderMain();
         }
@@ -65,9 +66,9 @@ internal static class Entrypoint
 
             Environment.Exit(1);
         }
-        finally
-        {
-            mutex?.ReleaseMutex();
-        }
+        // finally
+        // {
+        //     mutex?.ReleaseMutex();
+        // }
     }
 }

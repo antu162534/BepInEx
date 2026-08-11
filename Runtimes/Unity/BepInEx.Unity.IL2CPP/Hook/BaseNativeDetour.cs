@@ -74,7 +74,12 @@ internal abstract class BaseNativeDetour<T> : INativeDetour where T : BaseNative
         if (!typeof(Delegate).IsAssignableFrom(typeof(TDelegate)))
             throw new InvalidOperationException($"Type {typeof(TDelegate)} not a delegate type.");
 
-        _ = GenerateTrampoline(typeof(TDelegate).GetMethod("Invoke"));
+        // 临时兼容：Android CoreCLR 执行 MonoMod GenerateNativeProxy 生成的代理时会触发 SIGILL，
+        // 目前直接使用 Dobby 返回的 trampoline；该问题解决后应恢复统一的 GenerateTrampoline 路径。
+        if (OperatingSystem.IsAndroid())
+            Prepare();
+        else
+            _ = GenerateTrampoline(typeof(TDelegate).GetMethod("Invoke"));
 
         return Marshal.GetDelegateForFunctionPointer<TDelegate>(TrampolinePtr);
     }
