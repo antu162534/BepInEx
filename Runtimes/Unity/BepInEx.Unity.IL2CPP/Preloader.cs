@@ -25,7 +25,7 @@ public static class Preloader
     {
         try
         {
-            HarmonyBackendFix.Initialize();
+            HarmonyBackendFix.Initialize(OperatingSystem.IsAndroid());
             if (!OperatingSystem.IsAndroid())
                 ConsoleSetOutFix.Apply();
             UnityInfo.Initialize(Paths.ExecutablePath, Paths.GameDataPath);
