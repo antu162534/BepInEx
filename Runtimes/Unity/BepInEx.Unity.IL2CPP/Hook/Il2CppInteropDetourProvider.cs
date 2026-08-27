@@ -5,8 +5,9 @@ namespace BepInEx.Unity.IL2CPP.Hook;
 
 internal class Il2CppInteropDetourProvider : IDetourProvider
 {
-    public IDetour Create<TDelegate>(nint original, TDelegate target) where TDelegate : Delegate =>
-        new Il2CppInteropDetour(INativeDetour.Create(original, target));
+    public IDetour Create<TDelegate>(nint original, TDelegate target, bool specialReturnBuffer = false)
+        where TDelegate : Delegate =>
+        new Il2CppInteropDetour(INativeDetour.Create(original, target, specialReturnBuffer));
 }
 
 internal class Il2CppInteropDetour : IDetour

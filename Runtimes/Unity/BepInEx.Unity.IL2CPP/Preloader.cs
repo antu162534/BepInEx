@@ -25,7 +25,7 @@ public static class Preloader
     {
         try
         {
-            HarmonyBackendFix.Initialize(OperatingSystem.IsAndroid());
+            HarmonyBackendFix.Initialize();
             if (!OperatingSystem.IsAndroid())
                 ConsoleSetOutFix.Apply();
             UnityInfo.Initialize(Paths.ExecutablePath, Paths.GameDataPath);
@@ -53,7 +53,7 @@ public static class Preloader
             Logger.Log(LogLevel.Debug, $"Interop assembly directory: {Il2CppInteropManager.IL2CPPInteropAssemblyPath}");
             Logger.Log(LogLevel.Debug, $"BepInEx root path: {Paths.BepInExRootPath}");
 
-            if (PlatformHelper.Is(Platform.Wine) && !Environment.Is64BitProcess)
+            if (PlatformDetection.OS.Is(OSKind.Wine) && !Environment.Is64BitProcess)
             {
                 if (!NativeLibrary.TryGetExport(NativeLibrary.Load("ntdll"), "RtlRestoreContext", out var _))
                 {

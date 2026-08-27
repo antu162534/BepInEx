@@ -5,8 +5,11 @@ namespace BepInEx.Unity.IL2CPP.Hook.Dobby;
 
 internal class DobbyDetour : BaseNativeDetour<DobbyDetour>
 {
-    public DobbyDetour(nint originalMethodPtr, Delegate detourMethod)
-        : base(ResolveBranchTarget(originalMethodPtr), detourMethod) { }
+    private readonly bool specialReturnBuffer;
+
+    public DobbyDetour(nint originalMethodPtr, Delegate detourMethod, bool specialReturnBuffer = false)
+        : base(ResolveBranchTarget(originalMethodPtr), detourMethod) =>
+        this.specialReturnBuffer = specialReturnBuffer;
 
     private static unsafe nint ResolveBranchTarget(nint target)
     {
@@ -26,16 +29,23 @@ internal class DobbyDetour : BaseNativeDetour<DobbyDetour>
         return target;
     }
 
-    protected override void ApplyImpl() => DobbyLib.Commit(OriginalMethodPtr);
+    protected override void ApplyImpl() => EnsureSuccess(DobbyLib.Commit(OriginalMethodPtr), "DobbyCommit");
 
     protected override unsafe void PrepareImpl()
     {
         nint trampolinePtr = 0;
-        DobbyLib.Prepare(OriginalMethodPtr, DetourMethodPtr, &trampolinePtr);
+        EnsureSuccess(DobbyLib.Prepare(OriginalMethodPtr, DetourMethodPtr, specialReturnBuffer, &trampolinePtr),
+            "DobbyPrepare");
         TrampolinePtr = trampolinePtr;
     }
 
-    protected override void UndoImpl() => DobbyLib.Destroy(OriginalMethodPtr);
+    protected override void UndoImpl() => EnsureSuccess(DobbyLib.Destroy(OriginalMethodPtr), "DobbyDestroy");
 
     protected override void FreeImpl() { }
+
+    private static void EnsureSuccess(int status, string operation)
+    {
+        if (status != 0)
+            throw new InvalidOperationException($"{operation} failed with status {status}");
+    }
 }

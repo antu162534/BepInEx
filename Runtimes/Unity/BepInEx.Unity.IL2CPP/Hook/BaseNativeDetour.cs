@@ -1,8 +1,6 @@
 using System;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using BepInEx.Logging;
-using MonoMod.RuntimeDetour;
 
 namespace BepInEx.Unity.IL2CPP.Hook;
 
@@ -18,7 +16,6 @@ internal abstract class BaseNativeDetour<T> : INativeDetour where T : BaseNative
     }
 
     public bool IsPrepared { get; protected set; }
-    protected MethodInfo TrampolineMethod { get; set; }
     protected Delegate DetourMethod { get; set; }
 
     public nint OriginalMethodPtr { get; }
@@ -58,29 +55,12 @@ internal abstract class BaseNativeDetour<T> : INativeDetour where T : BaseNative
         IsValid = false;
     }
 
-    public MethodBase GenerateTrampoline(MethodBase signature = null)
-    {
-        if (TrampolineMethod == null)
-        {
-            Prepare();
-            TrampolineMethod = DetourHelper.GenerateNativeProxy(TrampolinePtr, signature);
-        }
-
-        return TrampolineMethod;
-    }
-
     public TDelegate GenerateTrampoline<TDelegate>() where TDelegate : Delegate
     {
         if (!typeof(Delegate).IsAssignableFrom(typeof(TDelegate)))
             throw new InvalidOperationException($"Type {typeof(TDelegate)} not a delegate type.");
 
-        // 临时兼容：Android CoreCLR 执行 MonoMod GenerateNativeProxy 生成的代理时会触发 SIGILL，
-        // 目前直接使用 Dobby 返回的 trampoline；该问题解决后应恢复统一的 GenerateTrampoline 路径。
-        if (OperatingSystem.IsAndroid())
-            Prepare();
-        else
-            _ = GenerateTrampoline(typeof(TDelegate).GetMethod("Invoke"));
-
+        Prepare();
         return Marshal.GetDelegateForFunctionPointer<TDelegate>(TrampolinePtr);
     }
 

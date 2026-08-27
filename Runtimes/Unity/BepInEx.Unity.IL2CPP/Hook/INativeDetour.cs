@@ -1,15 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Reflection;
 using BepInEx.Configuration;
 using BepInEx.Unity.IL2CPP.Hook.Dobby;
 using BepInEx.Unity.IL2CPP.Hook.Funchook;
-using MonoMod.RuntimeDetour;
 using MonoMod.Utils;
 
 namespace BepInEx.Unity.IL2CPP.Hook;
 
-public interface INativeDetour : IDetour
+public interface INativeDetour : IDisposable
 {
     private static readonly ConfigEntry<DetourProvider> DetourProviderType = ConfigFile.CoreConfig.Bind(
          "Detours", "DetourProviderType",
@@ -20,20 +18,31 @@ public interface INativeDetour : IDetour
     public nint OriginalMethodPtr { get; }
     public nint DetourMethodPtr { get; }
     public nint TrampolinePtr { get; }
+    public bool IsValid { get; }
+    public bool IsApplied { get; }
 
-    private static INativeDetour CreateDefault<T>(nint original, T target) where T : Delegate =>
+    public void Apply();
+    public void Undo();
+    public void Free();
+    public T GenerateTrampoline<T>() where T : Delegate;
+
+    private static INativeDetour CreateDefault<T>(nint original, T target, bool specialReturnBuffer)
+        where T : Delegate =>
         // TODO: check and provide an OS accurate provider
-        new DobbyDetour(original, target);
+        new DobbyDetour(original, target, specialReturnBuffer);
 
-    public static INativeDetour Create<T>(nint original, T target) where T : Delegate
+    public static INativeDetour Create<T>(nint original, T target, bool specialReturnBuffer = false)
+        where T : Delegate
     {
         var detour = DetourProviderType.Value switch
         {
-            DetourProvider.Dobby    => new DobbyDetour(original, target),
-            DetourProvider.Funchook => new FunchookDetour(original, target),
-            _                       => CreateDefault(original, target)
+            DetourProvider.Dobby    => new DobbyDetour(original, target, specialReturnBuffer),
+            DetourProvider.Funchook when !specialReturnBuffer => new FunchookDetour(original, target),
+            DetourProvider.Funchook => throw new PlatformNotSupportedException(
+                "Funchook does not support ARM64 return buffers"),
+            _ => CreateDefault(original, target, specialReturnBuffer)
         };
-        if (!ReflectionHelper.IsMono)
+        if (PlatformDetection.Runtime != RuntimeKind.Mono)
         {
             return new CacheDetourWrapper(detour, target);
         }
@@ -75,8 +84,6 @@ public interface INativeDetour : IDetour
         public void Undo() => _wrapped.Undo();
 
         public void Free() => _wrapped.Free();
-
-        public MethodBase GenerateTrampoline(MethodBase signature = null) => _wrapped.GenerateTrampoline(signature);
 
         public T GenerateTrampoline<T>() where T : Delegate
         {
