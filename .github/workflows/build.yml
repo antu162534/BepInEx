@@ -9,6 +9,8 @@ jobs:
             -   uses: actions/checkout@v3
                 with:
                     fetch-depth: 0 # Need to fetch all for proper history
+                    submodules: recursive  # ✅关键：递归拉取所有子模块(MonoMod等)
+
             -   name: Collect build info
                 id: info
                 uses: actions/github-script@v6
@@ -27,19 +29,30 @@ jobs:
                         });
                         core.setOutput("sha_short", shortHash);
                         core.setOutput("build_id", context.runNumber + 600); // builds.bepinex.dev build numbers start at 500
+
             -   uses: nrwl/last-successful-commit-action@v1
                 id: last_successful_commit
                 if: ${{ steps.info.outputs.build_type == 'BleedingEdge' }}
+                continue-on-error: true  # ✅fork仓库没有历史成功构建，允许失败跳过
                 with:
                     branch: master
                     workflow_id: build.yml
                     github_token: ${{ secrets.GITHUB_TOKEN }}
+
             -   uses: actions/setup-dotnet@v4
                 with:
                     dotnet-version: "8.0.x"
+
             -   name: Build
                 run: |
-                    ./build.sh --target Publish --build-type ${{ steps.info.outputs.build_type }} --build-id ${{ steps.info.outputs.build_id }} --last-build-commit \"${{ steps.last_successful_commit.outputs.commit_hash }}\" --nuget-api-key \"${{ secrets.BEPIN_DEV_NUGET_KEY }}\"
+                    LAST_COMMIT=${{ steps.last_successful_commit.outputs.commit_hash }}
+                    if [ -z "$LAST_COMMIT" ]; then
+                        ./build.sh --target Publish --build-type ${{ steps.info.outputs.build_type }} --build-id ${{ steps.info.outputs.build_id }}
+                    else
+                        ./build.sh --target Publish --build-type ${{ steps.info.outputs.build_type }} --build-id ${{ steps.info.outputs.build_id }} --last-build-commit "$LAST_COMMIT"
+                    fi
+
+            # 下面原版上传FTP、Discord通知，fork仓库没有对应secrets，会自动跳过，不用删
             -   name: Upload to BepinBuilds
                 env:
                     BEPISBUILDS_HOST: ${{ secrets.BEPISBUILDS_HOST }}
@@ -47,17 +60,19 @@ jobs:
                 run: |
                     artifacts_list=$(find ./bin/dist -maxdepth 1 -type f | tr '\n' ','); artifacts_list=${artifacts_list::-1};
                     curl --upload-file "{${artifacts_list}}" --ftp-pasv --ftp-skip-pasv-ip --ftp-create-dirs --ftp-method singlecwd --disable-epsv "ftp://${{ secrets.BEPISBUILDS_AUTH }}@${{ secrets.BEPISBUILDS_HOST }}:${{ secrets.BEPISBUILDS_PORT }}/bepinex_be/artifacts/${{ steps.info.outputs.build_id }}/"
+
             -   name: Generate changelog
                 id: generate_changelog
-                if: ${{ steps.info.outputs.build_type == 'BleedingEdge' }}
+                if: ${{ steps.info.outputs.build_type == 'BleedingEdge' && steps.last_successful_commit.outputs.commit_hash != '' }}
                 run: |
                     changelog=$(git --no-pager log --no-merges --pretty="format:- (\`%h\`) [%an] %s" ${{ steps.last_successful_commit.outputs.commit_hash }}..HEAD | sed ':a;N;$!ba;s/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
                     echo "::set-output name=changelog::$changelog"
+
             -   name: Notify success
                 uses: joelwmale/webhook-action@2.4.1
                 env:
                     BEPINEX_DISCORD_WEBHOOK: ${{ secrets.BEPINEX_DISCORD_WEBHOOK }}
-                if: ${{ steps.info.outputs.build_type == 'BleedingEdge' && env.BEPINEX_DISCORD_WEBHOOK != null }}
+                if: ${{ steps.info.outputs.build_type == 'BleedingEdge' && env.BEPINEX_DISCORD_WEBHOOK != null && steps.generate_changelog.outputs.changelog != '' }}
                 with:
                     url: ${{ secrets.BEPINEX_DISCORD_WEBHOOK }}
                     body: |
@@ -71,9 +86,9 @@ jobs:
                             }
                           ]
                         }
+
             -   name: Upload Artifacts
                 uses: actions/upload-artifact@v4
                 with:
                     path: "./bin/dist/*.zip"
-                    name: "BepInEx_CI_${{ steps.info.outputs.build_type }}_${{ steps.info.outputs.sha_short }}_${{ steps.info.outputs.build_id || 0 }}"
-      
+                    name: "BepInEx_CI_${{ steps.info.outputs.build_type }}_${{ steps                    
